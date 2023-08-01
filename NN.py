@@ -15,10 +15,12 @@ class DenseLayer():
         if self.is_input:
             return X
         else:
-            return np.transpose(self.activation(np.dot(self.weights, np.transpose(X))))
+            ones = np.ones((X.shape[0], 1))
+            temp_x = np.append(ones, X, 1)
+            return np.transpose(self.activation(np.dot(self.weights, np.transpose(temp_x))))
     
     'Calculates the cost of layer'
-    def calculate_error(self, X, output, next_error = None):
+    def calculate_error(self, X, output, next_error = None, next_weights = None):
         if self.is_output:
             m = X.shape[0]
             prediction = self.forward_propagation(X)
@@ -30,9 +32,37 @@ class DenseLayer():
                 error[i, :] = temp_prediction - temp_output
             return error
         else:
-            if next_error is None:
+            if next_error is None or next_weights is None:
                 return -1
-            z = np.dot(self.weights, np.transpose(X))
-            ones = np.ones((1, z.shape[2]))
+            ones = np.ones((X.shape[0], 1))
+            temp_x = np.append(ones, X, 1)
+            z = np.dot(self.weights, np.transpose(temp_x))
+            ones = np.ones((1, z.shape[1]))
             z = np.append(ones, z, 0)
-            return np.multiply(np.dot(np.transpose(self.weights), next_error), z)
+            error = np.multiply(np.dot(np.transpose(next_weights), next_error), self.activation_prime(z))
+            return error[1:, :]
+
+    def back_propagation(self, prev_output, next_error):
+        m = prev_output.shape[0]
+        delta = np.transpose(np.dot(next_error, prev_output))
+        delta = delta / m
+        ones = np.ones((1, delta.shape[1]))
+        delta = np.transpose(np.append(ones, delta, 0))
+        self.weights -= delta
+
+
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+def sigmoid_prime(z):
+    return np.multiply(sigmoid(z), (1 - sigmoid(z)))
+
+def dummy_activation(z):
+    return z
+
+
+def forward_propagate(layers: list[DenseLayer], X):
+    output = X
+    for layer in layers:
+        output = layer.forward_propagation(output)
+    return output
