@@ -104,7 +104,6 @@ def sigmoid_prime(z):
 def dummy_activation(z):
     return z
 
-
 def forward_propagate(layers: list[DenseLayer], X):
     output = X
     for layer in layers:
