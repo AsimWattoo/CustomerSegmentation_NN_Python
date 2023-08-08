@@ -20,17 +20,22 @@ class DenseLayer():
             return np.transpose(self.activation(np.dot(self.weights, np.transpose(temp_x))))
     
     #Calculates the cost of layer
-    def calculate_error(self, X, output, next_error = None, next_weights = None) -> np.ndarray:
+    def calculate_error(self, X, output, lamda: float, next_error = None, next_weights = None) -> np.ndarray:
+        temp_weights = self.weights
+        temp_weights[:, 1] = 0
+        m = X.shape[0] # (m, n)
         if self.is_output:
-            m = X.shape[0]
-            prediction = self.forward_propagation(X)
-            error = np.zeros((self.num_neurons, m))
-            out = np.transpose(output)
+            # m -> Number of records
+            # n -> Number of features
+            # l -> Number of labels
+            prediction = self.forward_propagation(X) # (m, l)
+            error = np.zeros((self.num_neurons, m)) # (l, m)
+            out = np.transpose(output) # (1, m)
             for i in range(self.num_neurons):
-                temp_output = out == i
-                temp_prediction = np.reshape(prediction[:, i], (1, -1))
+                temp_output = out == i # (1, m)
+                temp_prediction = np.reshape(prediction[:, i], (1, -1)) # (1, m)
                 error[i, :] = temp_prediction - temp_output
-            return error
+            return  (1 / m) * error + (lamda / m) * temp_weights;
         else:
             if next_error is None or next_weights is None:
                 return np.array([])
@@ -40,6 +45,7 @@ class DenseLayer():
             ones = np.ones((1, z.shape[1]))
             z = np.append(ones, z, 0)
             error = np.multiply(np.dot(np.transpose(next_weights), next_error), self.activation_prime(z))
+            error = (1 / m) * error + (lamda / m) * temp_weights;
             return error[1:, :]
 
     # Calculates the gradient
@@ -57,15 +63,17 @@ class DenseLayer():
         self.weights -= delta
 
     # Calculates the loss
-    def loss(self, X: np.ndarray, y: np.ndarray, num_labels: int):
+    def loss(self, X: np.ndarray, y: np.ndarray, num_labels: int, lamda: float):
         J = 0
         m = X.shape[0]
+        temp_weights = self.weights
+        temp_weights[:, 1] = 0
         prediction = np.transpose(self.forward_propagation(X))
         for i in range(num_labels):
             temp_y = y == i
             temp_prediction = np.reshape(prediction[i, :], (-1, 1))
             J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(1 - temp_prediction)))
-        return J
+        return J + (lamda / (2 * m)) * np.sum(np.square(temp_weights))
 
     #Checks whether the gradient value is correctly calculated or not
     def check_gradient(self, epsilon: float, prev_output: np.ndarray, y: np.ndarray, next_error: np.ndarray, num_labels: int, aplha: float):
@@ -84,7 +92,8 @@ class DenseLayer():
                 temp_weights[r, c] = 0
 
         self.weights = initial_weights
-        return np.linalg.norm(numerical_grad + gradient) / np.linalg.norm(numerical_grad - gradient)
+        # return np.linalg.norm(gradient - numerical_grad) / np.linalg.norm(numerical_grad + gradient)
+        return np.linalg.norm(np.abs(gradient - numerical_grad)) / np.linalg.norm(np.abs(gradient) + np.abs(numerical_grad))
 
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
@@ -102,7 +111,7 @@ def forward_propagate(layers: list[DenseLayer], X):
         output = layer.forward_propagation(output)
     return output
 
-def backward_propagate(layers: list[DenseLayer], X, y, alpha):
+def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, alpha: float, lamda: float):
     output = X
     activations = []
     for layer in layers:
@@ -113,7 +122,7 @@ def backward_propagate(layers: list[DenseLayer], X, y, alpha):
     next_error = []
     for i in range(layers.__len__() - 1, 0, -1):
         layer = layers[i]
-        next_error = layer.calculate_error(activations[i - 1], y, None if layer.is_output else next_error, None if layer.is_output else layers[i + 1].weights)
+        next_error = layer.calculate_error(activations[i - 1], y, lamda, None if layer.is_output else next_error, None if layer.is_output else layers[i + 1].weights)
         errors.insert(0, next_error)
 
     for i in range(layers.__len__() - 1, 0, -1):
