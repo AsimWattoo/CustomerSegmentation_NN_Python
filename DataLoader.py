@@ -102,4 +102,14 @@ def scatter_plots(df: pd.DataFrame, columns: list, color_column):
                     top=1,
                     wspace=1,
                     hspace=1)
+    
 
+def train_test_split(df: pd.DataFrame, train_portion: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    m = df.shape[0]
+    train_m = int(m * train_portion)
+    train_samples = np.random.choice(m, train_m, False)
+    train_df = df.iloc[train_samples, :]
+    total_samples = list(range(m))
+    test_samples = np.delete(total_samples, train_samples)
+    test_df = df.iloc[test_samples, :]
+    return train_df, test_df

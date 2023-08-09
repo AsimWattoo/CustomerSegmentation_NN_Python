@@ -1,4 +1,5 @@
 import numpy as np
+from tqdm import tqdm
 
 class DenseLayer():
     def __init__(self, num_neurons, inputs, activation, activation_prime, is_input = False, is_output = False):
@@ -20,9 +21,7 @@ class DenseLayer():
             return np.transpose(self.activation(np.dot(self.weights, np.transpose(temp_x))))
     
     #Calculates the cost of layer
-    def calculate_error(self, X, output, lamda: float, next_error = None, next_weights = None) -> np.ndarray:
-        temp_weights = self.weights
-        temp_weights[:, 1] = 0
+    def calculate_error(self, X, output, next_error = None, next_weights = None) -> np.ndarray:
         m = X.shape[0] # (m, n)
         if self.is_output:
             # m -> Number of records
@@ -35,7 +34,7 @@ class DenseLayer():
                 temp_output = out == i # (1, m)
                 temp_prediction = np.reshape(prediction[:, i], (1, -1)) # (1, m)
                 error[i, :] = temp_prediction - temp_output
-            return  (1 / m) * error + (lamda / m) * temp_weights;
+            return  error
         else:
             if next_error is None or next_weights is None:
                 return np.array([])
@@ -45,35 +44,40 @@ class DenseLayer():
             ones = np.ones((1, z.shape[1]))
             z = np.append(ones, z, 0)
             error = np.multiply(np.dot(np.transpose(next_weights), next_error), self.activation_prime(z))
-            error = (1 / m) * error + (lamda / m) * temp_weights;
             return error[1:, :]
 
     # Calculates the gradient
-    def calc_grad(self, alpha, prev_output, next_error):
+    def calc_grad(self, alpha, prev_output, next_error, lamda: float):
+        temp_weights = self.weights
+        temp_weights[:, 1] = 0
         m = prev_output.shape[0]
         delta = np.transpose(np.dot(next_error, prev_output))
         delta = delta / m
         zeros = np.zeros((1, delta.shape[1]))
         delta = np.transpose(np.append(zeros, delta, 0))
-        return delta
+        return delta + (lamda / m) * temp_weights
 
     # Calculates the back propagation
-    def back_propagation(self, prev_output, next_error, alpha = 0.01):
-        delta = self.calc_grad(alpha, prev_output, next_error)
+    def back_propagation(self, prev_output, next_error, lamda: float, alpha : float = 0.01):
+        delta = self.calc_grad(alpha, prev_output, next_error, lamda)
         self.weights -= delta
 
     # Calculates the loss
     def loss(self, X: np.ndarray, y: np.ndarray, num_labels: int, lamda: float):
+
+
+        m = y.shape[0]
         J = 0
-        m = X.shape[0]
-        temp_weights = self.weights
-        temp_weights[:, 1] = 0
+        temp_theta = np.array(self.weights)
+        temp_theta[:, 0] = 0
         prediction = np.transpose(self.forward_propagation(X))
-        for i in range(num_labels):
+        y = np.reshape(y, (-1, 1))
+        ones = np.ones((m, 1))
+        for i in range(0, num_labels):
             temp_y = y == i
             temp_prediction = np.reshape(prediction[i, :], (-1, 1))
-            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(1 - temp_prediction)))
-        return J + (lamda / (2 * m)) * np.sum(np.square(temp_weights))
+            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(ones - temp_prediction))) + (lamda / (2 * m)) * np.sum(np.square(temp_theta))
+        return J
 
     #Checks whether the gradient value is correctly calculated or not
     def check_gradient(self, epsilon: float, prev_output: np.ndarray, y: np.ndarray, next_error: np.ndarray, num_labels: int, aplha: float):
@@ -121,10 +125,63 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
     next_error = []
     for i in range(layers.__len__() - 1, 0, -1):
         layer = layers[i]
-        next_error = layer.calculate_error(activations[i - 1], y, lamda, None if layer.is_output else next_error, None if layer.is_output else layers[i + 1].weights)
+        next_error = layer.calculate_error(activations[i - 1], y, None if layer.is_output else next_error, None if layer.is_output else layers[i + 1].weights)
         errors.insert(0, next_error)
 
     for i in range(layers.__len__() - 1, 0, -1):
         layer = layers[i]
-        layer.back_propagation(activations[i - 1], errors[i - 1], alpha)
+        layer.back_propagation(activations[i - 1], errors[i - 1], lamda, alpha)
             
+def train(layers: list[DenseLayer], 
+          X: np.ndarray, 
+          y: np.ndarray, 
+          num_labels: int, 
+          epochs: int, 
+          alpha: float, 
+          lamda: float,
+          validation_X: np.ndarray,
+          validation_y: np.ndarray,
+          validate: bool = False, 
+          display_method= None, 
+          epoch_operation = None):
+    # with Live(save_dvc_exp=True) as live:
+    # live.log_param("Learning Rate", learning_rate)
+    history = {
+        "loss": [],
+    }
+
+    if validate:
+        history['val_loss'] = []
+
+    for i in tqdm(range(epochs)):
+
+        if epoch_operation != None:
+            epoch_operation()
+
+        output = X
+        # live.log_param('Epoch', i)
+        for j in range(layers.__len__() - 1):
+            output = layers[j].forward_propagation(output)
+        loss = layers[-1].loss(output, y, num_labels, lamda)
+
+        epoch_message = f'Epoch: {i + 1}, Training Loss: {round(loss, 2)}'
+
+        if validate:
+            val_output = validation_X
+            for j in range(layers.__len__() - 1):
+                val_output = layers[j].forward_propagation(val_output)
+            val_loss = layers[-1].loss(val_output, validation_y, num_labels, lamda)
+            epoch_message += f", Validation Loss: {round(val_loss, 2)}"
+            history['val_loss'].append(val_loss)
+        
+        if display_method is None:
+            print(epoch_message)
+        else:
+            display_method(epoch_message)
+
+        history['loss'].append(loss)
+        # live.log_metric("Loss", loss)
+        backward_propagate(layers, X, y, alpha, lamda)
+
+        # live.next_step()
+    return history
