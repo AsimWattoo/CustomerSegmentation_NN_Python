@@ -10,14 +10,16 @@ class DenseLayer():
         self.activation_prime = activation_prime
         self.is_output = is_output
         self.is_input = is_input
-    
+
     #Feeds forward the neural network
-    def forward_propagation(self, X):
+    def forward_propagation(self, X, append: bool = True):
         if self.is_input:
             return X
         else:
-            ones = np.ones((X.shape[0], 1))
-            temp_x = np.append(ones, X, 1)
+            temp_x = X
+            if append:
+                ones = np.ones((X.shape[0], 1))
+                temp_x = np.append(ones, X, 1)
             return np.transpose(self.activation(np.dot(self.weights, np.transpose(temp_x))))
 
     # Calculates the loss
@@ -53,7 +55,7 @@ def forward_propagate(layers: list[DenseLayer], X):
 #Calculates the cost of layer
 def calculate_error(layer: DenseLayer, X, output, next_error = None, next_weights = None) -> np.ndarray:
     if layer.is_output:
-        prediction = np.transpose(layer.forward_propagation(X)) # (1, l)
+        prediction = np.transpose(layer.forward_propagation(X, False)) # (1, l)
         error = np.zeros((layer.num_neurons, 1)) # (l, 1)
         out = output # (1, 1)
         for i in range(layer.num_neurons):
@@ -66,23 +68,15 @@ def calculate_error(layer: DenseLayer, X, output, next_error = None, next_weight
     else:
         if next_error is None or next_weights is None:
             return np.array([])
-        ones = np.ones((X.shape[0], 1)) 
-        temp_x = np.append(ones, X, 1) # (1, n + 1)
-        z = np.dot(layer.weights, np.transpose(temp_x))
+        z = np.dot(layer.weights, np.transpose(X))
         ones = np.zeros((1, z.shape[1]))
         z = np.append(ones, z, 0) # (n + 1, 1)
         error = np.multiply(np.dot(np.transpose(next_weights), next_error), layer.activation_prime(z))
         return error[1:, :]
 
 # Calculates the gradient
-def calc_grad(output, next_error, next_weights: np.ndarray):
-    temp_weights = next_weights
-    temp_weights[:, 1] = 0
-    m = output.shape[0]
-    delta = np.transpose(np.dot(next_error, output))
-    #print(f'Output: {prev_output.shape}, Weights: {self.weights.shape}, Error: {next_error.shape} -> Delta: {delta.shape}')
-    # zeros = np.zeros((1, delta.shape[1]))
-    delta = np.transpose(delta)
+def calc_grad(output, next_error):
+    delta = np.dot(next_error, output)
     return delta
 
 # Calculates the gradient and updates the variables
@@ -97,27 +91,34 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
         index = 1
         # Finding the outputs for each layer
         for layer in layers:
-            output = layer.forward_propagation(output)
+            output = layer.forward_propagation(output, False)
+            if not layer.is_output:
+                ones = np.ones((output.shape[0], 1))
+                output = np.append(ones, output, 1)
             activations.append(output)
             index += 1
-        
+
         error = None
         # Finding the errors
-        for j in range(layers.__len__() - 1, 0, -1):
+        for j in range(layers.__len__() - 1, -1, -1):
             layer = layers[j]
-            error = calculate_error(layer, activations[j - 1], y[i], error, None if layer.is_output else layers[j + 1].weights)
-            errors.append(error)
+            if not layer.is_input: 
+                error = calculate_error(layer, activations[j - 1], y[i], error, None if layer.is_output else layers[j + 1].weights)
+                errors.insert(0, error)
+        
+        for j in range(layers.__len__() -2, -1, -1):
+            layer = layers[j]
             if not layer.is_output:
-                calc = calc_grad(activations[j], errors[layers.__len__() - 1 - j], layers[j + 1].weights)
+                calc = calc_grad(activations[j], errors[j])
                 if first_iter:
                     deltas.insert(0, calc)
                 else:
-                    deltas[j - 1] += calc
+                    deltas[j] += calc
         first_iter = False
+
     # Normalizing all the deltas
     for i in range(deltas.__len__()):
         deltas[i] = (1 / m) * deltas[i]
-        print(deltas[i].shape)
         if not return_grad:
             layers[i + 1].weights -= alpha * deltas[i]
 
@@ -165,17 +166,17 @@ def set_weights(layers: list[DenseLayer], weights: np.ndarray):
         layer.weights = np.reshape(weights[weight_index:weights_size], layer.weights.shape)
         weight_index += weights_size + 1
 
-def train(layers: list[DenseLayer], 
-          X: np.ndarray, 
-          y: np.ndarray, 
-          num_labels: int, 
-          epochs: int, 
-          alpha: float, 
+def train(layers: list[DenseLayer],
+          X: np.ndarray,
+          y: np.ndarray,
+          num_labels: int,
+          epochs: int,
+          alpha: float,
           lamda: float,
           validation_X: np.ndarray,
           validation_y: np.ndarray,
-          validate: bool = False, 
-          display_method= None, 
+          validate: bool = False,
+          display_method= None,
           epoch_operation = None):
     # with Live(save_dvc_exp=True) as live:
     # live.log_param("Learning Rate", learning_rate)
@@ -213,7 +214,7 @@ def train(layers: list[DenseLayer],
 
             epoch_message += f", Validation Loss: {round(val_loss, 2)}"
             history['val_loss'].append(val_loss)
-        
+
         if display_method is None:
             print(epoch_message)
         else:
@@ -242,7 +243,7 @@ def softmax_prime(z):
         comps = z[i, :]
         for j in range(n):
             if i == j:
-                prime[i, j] = z[i, j], (1 - z[i, j]) 
+                prime[i, j] = z[i, j], (1 - z[i, j])
             else:
                 prime[i, j] = -z[i, j] * z[i, j]
     return prime
