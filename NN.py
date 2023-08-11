@@ -41,26 +41,27 @@ class DenseLayer():
             ones = np.ones((X.shape[0], 1))
             temp_x = np.append(ones, X, 1)
             z = np.dot(self.weights, np.transpose(temp_x))
-            ones = np.ones((1, z.shape[1]))
+            ones = np.zeros((1, z.shape[1]))
             z = np.append(ones, z, 0)
             error = np.multiply(np.dot(np.transpose(next_weights), next_error), self.activation_prime(z))
             return error[1:, :]
 
     # Calculates the gradient
-    def calc_grad(self, prev_output, next_error, lamda: float):
-        temp_weights = self.weights
+    def calc_grad(self, prev_output, next_error, lamda: float, next_weights: np.ndarray):
+        temp_weights = next_weights
         temp_weights[:, 1] = 0
         m = prev_output.shape[0]
         delta = np.transpose(np.dot(next_error, prev_output))
+        #print(f'Output: {prev_output.shape}, Weights: {self.weights.shape}, Error: {next_error.shape} -> Delta: {delta.shape}')
         delta = delta / m
         zeros = np.zeros((1, delta.shape[1]))
         delta = np.transpose(np.append(zeros, delta, 0))
         return delta + (lamda / m) * temp_weights
 
     # Calculates the back propagation
-    def back_propagation(self, prev_output, next_error, lamda: float, alpha : float = 0.01):
-        delta = self.calc_grad(prev_output, next_error, lamda)
-        self.weights -= alpha * delta
+    def back_propagation(self, prev_output, next_error, next_weights: np.ndarray, lamda: float, alpha : float = 0.01):
+        delta = self.calc_grad(prev_output, next_error, lamda, next_weights)
+        return next_weights - alpha * delta
 
     # Calculates the loss
     def loss(self, X: np.ndarray, y: np.ndarray, num_labels: int, lamda: float):
@@ -74,12 +75,12 @@ class DenseLayer():
         for i in range(0, num_labels):
             temp_y = y == i
             temp_prediction = np.reshape(prediction[i, :], (-1, 1))
-            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(ones - temp_prediction))) + (lamda / (2 * m)) * np.sum(np.square(temp_theta))
-        return J
+            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(ones - temp_prediction)))
+        return J + (lamda / (2 * m)) * np.sum(np.square(temp_theta))
 
     #Checks whether the gradient value is correctly calculated or not
     def check_gradient(self, epsilon: float, prev_output: np.ndarray, y: np.ndarray, next_error: np.ndarray, num_labels: int, aplha: float, lamda: float):
-        gradient = self.calc_grad(prev_output, next_error, lamda)
+        gradient = self.calc_grad(prev_output, next_error, lamda, self.weights)
         numerical_grad = np.zeros(self.weights.shape)
         initial_weights = self.weights
         temp_weights = np.zeros(self.weights.shape)
@@ -115,9 +116,12 @@ def forward_propagate(layers: list[DenseLayer], X):
 def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, alpha: float, lamda: float):
     output = X
     activations = []
+    index = 0
     for layer in layers:
         output = layer.forward_propagation(output)
         activations.append(output)
+        # print(f'Layer: {index + 1}, Activation: {output.shape}')
+        index += 1
 
     errors = []
     next_error = []
@@ -125,10 +129,13 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
         layer = layers[i]
         next_error = layer.calculate_error(activations[i - 1], y, None if layer.is_output else next_error, None if layer.is_output else layers[i + 1].weights)
         errors.insert(0, next_error)
+        # print(f'Layer: {i + 1}, Error: {next_error.shape}, Prev Weights: {None if layer.is_output else layers[i + 1].weights.shape}')
 
-    for i in range(layers.__len__() - 1, 0, -1):
+    
+    for i in range(layers.__len__() - 2, 0, -1):
         layer = layers[i]
-        layer.back_propagation(activations[i - 1], errors[i - 1], lamda, alpha)
+        #print(f'Layer: {i + 1}')
+        layers[i + 1].weights = layer.back_propagation(activations[i], errors[i], layers[i+1].weights, lamda, alpha)
             
 def train(layers: list[DenseLayer], 
           X: np.ndarray, 
