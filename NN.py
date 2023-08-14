@@ -127,12 +127,22 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
         return deltas
 
 #Checks whether the gradient value is correctly calculated or not
-def check_gradient(layers: list[DenseLayer], epsilon: float, X: np.ndarray, prev_output: np.ndarray, y: np.ndarray, next_error: np.ndarray, num_labels: int, alpha: float, lamda: float):
+def check_gradient(layers: list[DenseLayer], epsilon: float, X: np.ndarray, y: np.ndarray, num_labels: int, alpha: float, lamda: float):
     gradient = backward_propagate(layers, X, y, alpha, lamda, True)
-    initial_weights = np.array([])
+    initial_weights = None
     total_grad = np.array([])
-    [np.append(initial_weights, np.reshape(layer.weights, (1, -1))) for layer in layers]
-    [np.append(total_grad, np.reshape(grad, (1, -1))) for grad in gradient]
+    first_run = True
+    for layer in layers:
+        if layer.is_input:
+            continue
+        if first_run:
+            initial_weights = np.reshape(layer.weights, (-1, 1))
+        else:
+            initial_weights = np.append(initial_weights, np.reshape(layer.weights, (-1, 1)), 0)
+        first_run = False
+    
+    for grad in gradient:
+        total_grad = np.append(total_grad, np.reshape(grad, (-1,  1)))
     temp_weights = np.zeros(initial_weights.shape)
     numerical_grad = np.zeros(initial_weights.shape)
     for r in range(0, temp_weights.shape[0]):
@@ -162,9 +172,11 @@ def set_weights(layers: list[DenseLayer], weights: np.ndarray):
     # Setting new weights
     weight_index = 0
     for layer in layers:
+        if layer.is_input:
+            continue
         weights_size = layer.weights.shape[0] * layer.weights.shape[1]
-        layer.weights = np.reshape(weights[weight_index:weights_size], layer.weights.shape)
-        weight_index += weights_size + 1
+        layer.weights = np.reshape(weights[weight_index:weight_index + weights_size], layer.weights.shape)
+        weight_index += weights_size
 
 def train(layers: list[DenseLayer],
           X: np.ndarray,
