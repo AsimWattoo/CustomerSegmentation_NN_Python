@@ -5,7 +5,7 @@ class DenseLayer():
     def __init__(self, num_neurons, inputs, activation, activation_prime, is_input = False, is_output = False):
         self.num_neurons = num_neurons
         self.inputs = inputs
-        self.weights = np.random.randn(num_neurons, inputs + 1)
+        self.weights = np.random.randn(num_neurons, inputs + 1) * 0.01
         self.activation = activation
         self.activation_prime = activation_prime
         self.is_output = is_output
@@ -23,18 +23,14 @@ class DenseLayer():
             return np.transpose(self.activation(np.dot(self.weights, np.transpose(temp_x))))
 
     # Calculates the loss
-    def loss(self, prediction: np.ndarray, y: np.ndarray, num_labels: int, lamda: float):
-        m = y.shape[0]
+    def loss(self, prediction: np.ndarray, y: np.ndarray, num_labels: int):
+        m = prediction.shape[0]
         J = 0
-        temp_theta = np.array(self.weights)
-        temp_theta[:, 0] = 0
-        prediction = np.transpose(prediction)
         y = np.reshape(y, (-1, 1))
-        ones = np.ones((m, 1))
-        for i in range(0, num_labels):
+        for i in range(num_labels):
             temp_y = y == i
-            temp_prediction = np.reshape(prediction[i, :], (-1, 1))
-            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1 - temp_y), np.log(ones - temp_prediction)))
+            temp_prediction = np.reshape(prediction[:, i], (-1, 1))
+            J += (1 / m) * np.sum(-np.multiply(temp_y, np.log(temp_prediction)) - np.multiply((1-temp_y), np.log(1 - temp_prediction)))
         return J # + (lamda / (2 * m)) * np.sum(np.square(temp_theta))
 
 def sigmoid(z):
@@ -52,83 +48,50 @@ def forward_propagate(layers: list[DenseLayer], X):
         output = layer.forward_propagation(output)
     return output
 
-#Calculates the cost of layer
-def calculate_error(layer: DenseLayer, X, output, next_error = None, next_weights = None) -> np.ndarray:
-    if layer.is_output:
-        prediction = np.transpose(layer.forward_propagation(X, False)) # (1, l)
-        error = np.zeros((layer.num_neurons, 1)) # (l, 1)
-        out = output # (1, 1)
-        for i in range(layer.num_neurons):
-            temp_output = out == i # (1, 1)
-            temp_prediction = prediction[i]
-            error[i] = temp_prediction - temp_output
-        return  error
-    elif layer.is_input:
-        return np.array([])
-    else:
-        if next_error is None or next_weights is None:
-            return np.array([])
-        z = np.dot(layer.weights, np.transpose(X))
-        ones = np.zeros((1, z.shape[1]))
-        z = np.append(ones, z, 0) # (n + 1, 1)
-        error = np.multiply(np.dot(np.transpose(next_weights), next_error), layer.activation_prime(z))
-        return error[1:, :]
-
-# Calculates the gradient
-def calc_grad(output, next_error):
-    delta = np.dot(next_error, output)
-    return delta
-
 # Calculates the gradient and updates the variables
-def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, alpha: float, lamda: float, return_grad: bool = False):
+def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, alpha: float, lamda: float, num_labels: int, return_grad: bool = False):
+    activations = []
+    output = X
     m = X.shape[0]
+    for layer in layers:
+        output = layer.forward_propagation(output)
+        activations.append(output)
+
+    errors = []
     deltas = []
-    first_iter = True
-    for i in range(m):
-        activations = []
-        output = np.array([X[i]])
-        errors = []
-        index = 1
-        # Finding the outputs for each layer
-        for layer in layers:
-            output = layer.forward_propagation(output, False)
-            if not layer.is_output:
-                ones = np.ones((output.shape[0], 1))
-                output = np.append(ones, output, 1)
-            activations.append(output)
-            index += 1
+    dz3 = np.zeros((m, num_labels))
+    y = np.reshape(y, (-1, 1))
+    for i in range(num_labels):
+       temp_y = y == i
+       temp_prediction = np.reshape(output[:, i], (-1, 1))
+       dz3[:, i:i+1] = - (1 / m) * (temp_prediction - temp_y)
 
-        error = None
-        # Finding the errors
-        for j in range(layers.__len__() - 1, -1, -1):
-            layer = layers[j]
-            if not layer.is_input: 
-                error = calculate_error(layer, activations[j - 1], y[i], error, None if layer.is_output else layers[j + 1].weights)
-                errors.insert(0, error)
-        
-        for j in range(layers.__len__() -2, -1, -1):
-            layer = layers[j]
-            if not layer.is_output:
-                calc = calc_grad(activations[j], errors[j])
-                if first_iter:
-                    deltas.insert(0, calc)
-                else:
-                    deltas[j] += calc
-        first_iter = False
-
-    # Normalizing all the deltas
-    for i in range(deltas.__len__()):
-        deltas[i] = (1 / m) * deltas[i]
+    errors.append(dz3)
+    for i in range(layers.__len__() - 2, -1, -1):
+        layer = layers[i]
+        dZ_next = errors[0]
+        # If the layer is not input layer then
+        if not layer.is_input:
+            temp_weights = layers[i + 1].weights[:, 1:]
+            dA = np.dot(dZ_next, temp_weights)
+            prev_A = activations[i - 1]
+            ones = np.ones((prev_A.shape[0], 1))
+            temp_prev_A = np.append(ones, prev_A, 1)
+            z = np.transpose(layer.activation(np.dot(layer.weights, np.transpose(temp_prev_A))))
+            dZ = np.multiply(dA, layer.activation_prime(z))
+            errors.insert(0, dZ)
+        delta = np.transpose(np.dot(np.transpose(activations[i]), dZ_next))
+        deltas.insert(0, delta)
         if not return_grad:
-            layers[i + 1].weights -= alpha * deltas[i]
-
-    # Returning the gradients
+            layers[i + 1].weights[:, 1:] = layers[i + 1].weights[:, 1:] + alpha * delta
+    
     if return_grad:
         return deltas
 
+
 #Checks whether the gradient value is correctly calculated or not
 def check_gradient(layers: list[DenseLayer], epsilon: float, X: np.ndarray, y: np.ndarray, num_labels: int, alpha: float, lamda: float):
-    gradient = backward_propagate(layers, X, y, alpha, lamda, True)
+    gradient = backward_propagate(layers, X, y, alpha, lamda, num_labels, True)
     initial_weights = None
     total_grad = np.array([])
     first_run = True
@@ -165,7 +128,7 @@ def calculate_loss(layers: list[DenseLayer], weights: np.ndarray, X: np.ndarray,
     set_weights(layers, weights)
     # Forward Propagating the layers
     predictions = forward_propagate(layers, X)
-    return layers[-1].loss(predictions, y, num_labels, lamda)
+    return layers[-1].loss(predictions, y, num_labels)
 
 # Assigns the weights from the list
 def set_weights(layers: list[DenseLayer], weights: np.ndarray):
@@ -190,53 +153,24 @@ def train(layers: list[DenseLayer],
           validate: bool = False,
           display_method= None,
           epoch_operation = None):
-    # with Live(save_dvc_exp=True) as live:
-    # live.log_param("Learning Rate", learning_rate)
-    history = {
-        "loss": [],
-    }
-    m = X.shape[0]
-    if validate:
-        history['val_loss'] = []
+    history = {"loss": []}
 
-    for i in tqdm(range(epochs)):
+    for epoch in range(epochs):
+        prediction = forward_propagate(layers, X)
+        loss = layers[-1].loss(prediction, y, num_labels)
+        history["loss"].append(loss)
 
-        if epoch_operation != None:
-            epoch_operation()
-
-        output = X
-        # live.log_param('Epoch', i)
-        for j in range(layers.__len__() - 1):
-            output = layers[j].forward_propagation(output)
-        loss = layers[-1].loss(output, y, num_labels, lamda)
-
-        # for j in range(layers.__len__() - 2, -1, -1):
-        #     loss += (lamda / (2 * m)) * np.sum(np.square(layers[j].weights))
-
-        epoch_message = f'Epoch: {i + 1}, Training Loss: {round(loss, 2)}'
-
-        if validate:
-            val_output = validation_X
-            for j in range(layers.__len__() - 1):
-                val_output = layers[j].forward_propagation(val_output)
-            val_loss = layers[-1].loss(val_output, validation_y, num_labels, lamda)
-
-            # for j in range(layers.__len__() - 2, -1, -1):
-                # val_loss += (lamda / (2 * m)) * np.sum(np.square(layers[j].weights))
-
-            epoch_message += f", Validation Loss: {round(val_loss, 2)}"
-            history['val_loss'].append(val_loss)
+        # Doing back propagation
+        backward_propagate(layers, X, y, alpha, lamda, num_labels, False)
 
         if display_method is None:
-            print(epoch_message)
+            print(f'Epoch: {epoch} -> Loss: {round(loss)}')
         else:
-            display_method(epoch_message)
+            display_method(f'Epoch: {epoch} -> Loss: {round(loss)}')
 
-        history['loss'].append(loss)
-        # live.log_metric("Loss", loss)
-        backward_propagate(layers, X, y, alpha, lamda)
+        if epoch_operation is not None:
+            epoch_operation()
 
-        # live.next_step()
     return history
 
 def softmax(z):
