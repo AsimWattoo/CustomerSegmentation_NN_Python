@@ -5,6 +5,7 @@ class DenseLayer():
     def __init__(self, num_neurons, inputs, activation, activation_prime, is_input = False, is_output = False):
         self.num_neurons = num_neurons
         self.inputs = inputs
+        # TODO: Randomly initialize all the variables and set biases to 0
         self.weights = np.random.randn(num_neurons, inputs + 1) * 0.01
         self.activation = activation
         self.activation_prime = activation_prime
@@ -51,10 +52,13 @@ def forward_propagate(layers: list[DenseLayer], X):
 # Calculates the gradient and updates the variables
 def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, alpha: float, lamda: float, num_labels: int, return_grad: bool = False):
     activations = []
-    output = X
     m = X.shape[0]
+    output = X
     for layer in layers:
-        output = layer.forward_propagation(output)
+        output = layer.forward_propagation(output, False)
+        if not layer.is_output:
+            ones = np.ones((output.shape[0], 1))
+            output = np.append(ones, output, 1)
         activations.append(output)
 
     errors = []
@@ -70,24 +74,27 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
     for i in range(layers.__len__() - 2, -1, -1):
         layer = layers[i]
         dZ_next = errors[0]
+        temp_dZ_next = dZ_next
+        if i < layers.__len__() - 2:
+            temp_dZ_next = temp_dZ_next[:, 1:]
+
         # If the layer is not input layer then
         if not layer.is_input:
-            temp_weights = layers[i + 1].weights[:, 1:]
-            dA = np.dot(dZ_next, temp_weights)
-            prev_A = activations[i - 1]
-            ones = np.ones((prev_A.shape[0], 1))
-            temp_prev_A = np.append(ones, prev_A, 1)
-            z = np.transpose(layer.activation(np.dot(layer.weights, np.transpose(temp_prev_A))))
+            temp_weights = layers[i + 1].weights
+            dA = np.dot(temp_dZ_next, temp_weights)
+            prev_A = np.transpose(activations[i - 1])
+            z = np.transpose(layer.activation(np.dot(layer.weights, prev_A)))
+            ones = np.ones((z.shape[0], 1))
+            z = np.append(ones, z, 1)
             dZ = np.multiply(dA, layer.activation_prime(z))
             errors.insert(0, dZ)
-        delta = np.transpose(np.dot(np.transpose(activations[i]), dZ_next))
+        delta = np.transpose(np.dot(np.transpose(activations[i]), temp_dZ_next))
         deltas.insert(0, delta)
         if not return_grad:
-            layers[i + 1].weights[:, 1:] = layers[i + 1].weights[:, 1:] + alpha * delta
+            layers[i + 1].weights = layers[i + 1].weights + alpha * delta
     
     if return_grad:
         return deltas
-
 
 #Checks whether the gradient value is correctly calculated or not
 def check_gradient(layers: list[DenseLayer], epsilon: float, X: np.ndarray, y: np.ndarray, num_labels: int, alpha: float, lamda: float):
@@ -164,9 +171,9 @@ def train(layers: list[DenseLayer],
         backward_propagate(layers, X, y, alpha, lamda, num_labels, False)
 
         if display_method is None:
-            print(f'Epoch: {epoch} -> Loss: {round(loss)}')
+            print(f'Epoch: {epoch} -> Loss: {round(loss, 2)}')
         else:
-            display_method(f'Epoch: {epoch} -> Loss: {round(loss)}')
+            display_method(f'Epoch: {epoch} -> Loss: {round(loss, 2)}')
 
         if epoch_operation is not None:
             epoch_operation()
