@@ -74,23 +74,26 @@ def backward_propagate(layers: list[DenseLayer], X: np.ndarray, y: np.ndarray, a
     for i in range(layers.__len__() - 2, -1, -1):
         layer = layers[i]
         dZ_next = errors[0]
-        temp_dZ_next = dZ_next
-        if i < layers.__len__() - 2:
-            temp_dZ_next = temp_dZ_next[:, 1:]
 
         # If the layer is not input layer then
         if not layer.is_input:
             temp_weights = layers[i + 1].weights
-            dA = np.dot(temp_dZ_next, temp_weights)
+            dA = np.dot(dZ_next, temp_weights)
             prev_A = np.transpose(activations[i - 1])
-            z = np.transpose(layer.activation(np.dot(layer.weights, prev_A)))
+            # ones = np.ones((1, prev_A.shape[1]))
+            # prev_A = np.append(ones, prev_A, 0)
+            z = np.transpose(np.dot(layer.weights, prev_A))
             ones = np.ones((z.shape[0], 1))
             z = np.append(ones, z, 1)
             dZ = np.multiply(dA, layer.activation_prime(z))
+            dZ = dZ[:, 1:]
             errors.insert(0, dZ)
-        delta = np.transpose(np.dot(np.transpose(activations[i]), temp_dZ_next))
+        print(f"Layer {i + 1}")
+        print(activations[i].T.shape, dZ_next.shape)
+        delta = np.transpose(np.dot(np.transpose(activations[i]), dZ_next))
         deltas.insert(0, delta)
         if not return_grad:
+            print(layers[i + 1].weights.shape, delta.shape)
             layers[i + 1].weights = layers[i + 1].weights + alpha * delta
     
     if return_grad:
@@ -181,22 +184,10 @@ def train(layers: list[DenseLayer],
     return history
 
 def softmax(z):
-    return np.exp(z) / np.reshape(np.sum(np.exp(z), 1), (-1, 1))
-
-def softmax_comps(z, comps):
-    return np.exp(z) / np.sum(np.exp(comps))
+    z -= np.max(z)
+    sm = (np.exp(z).T / np.reshape(np.sum(np.exp(z), axis=0), (-1, 1))).T
+    return sm
 
 def softmax_prime(z):
-    # z = softmax(z)
-    # Number of records
-    m = z.shape[0]
-    n = z.shape[1]
-    prime = np.zeros((m, n))
-    for i in range(m):
-        comps = z[i, :]
-        for j in range(n):
-            if i == j:
-                prime[i, j] = z[i, j], (1 - z[i, j])
-            else:
-                prime[i, j] = -z[i, j] * z[i, j]
-    return prime
+    d = np.reshape(z, (-1, 1))
+    return np.diagflat(d) - np.dot(d, d.T);
