@@ -10,3 +10,17 @@ The model is completely underfitting and still I am not able to identify whether
 ## Confusion Matrix
 
 ![Alt text](ConfusionMatrix.png)
+
+# Digit Classification Dataset Results
+
+Training Loss: 5%
+Test Loss: 7%
+
+## Graph
+
+![Alt text](Graph-Loss.png)
+
+## Confusion Matrix
+
+![Alt text](ConfusionMatrix-Digit.png)
+
