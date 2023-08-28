@@ -141,6 +141,7 @@ def train(layers: list[DenseLayer],
           y: np.ndarray,
           num_labels: int,
           epochs: int,
+          batch_size: int,
           alpha: float,
           lamda: float,
           validation_X: np.ndarray,
@@ -148,23 +149,65 @@ def train(layers: list[DenseLayer],
           validate: bool = False,
           display_method= None,
           epoch_operation = None):
-    history = {"loss": []}
-
+    history = {"loss": [], "val_loss": []}
+    m = X.shape[0]
     for epoch in tqdm(range(epochs)):
-        prediction, caches = forward_propagate(layers, X)
-        loss = layers[-1].loss(prediction, y, num_labels)
-        history["loss"].append(loss)
+        startPoint = 0
+        endPoint = batch_size
 
-        # Doing back propagation
-        backward_propagate(layers, y, alpha, lamda, num_labels, caches, False)
+        batch_losses = []
+        val_batch_losses = []
 
-        if display_method is None:
-            print(f'Epoch: {epoch} -> Loss: {round(loss, 2)}')
-        else:
-            display_method(f'Epoch: {epoch} -> Loss: {round(loss, 2)}')
+        while endPoint <= m:
+            batch_X = X[startPoint:endPoint, :]
+            batch_y = y[startPoint:endPoint]
+            startPoint = endPoint
+            endPoint = startPoint + batch_size
+
+            # Forward Propagation
+            prediction, caches = forward_propagate(layers, batch_X)
+
+            # Calculating loss
+            loss = layers[-1].loss(prediction, batch_y, num_labels)
+            batch_losses.append(loss)
+
+            # Doing back propagation
+            backward_propagate(layers, batch_y, alpha, lamda, num_labels, caches, False)
+        
+        epoch_loss = np.average(batch_losses)
+        history["loss"].append(epoch_loss)
+
+        print_str = f'Epoch: {epoch} -> Loss: {round(epoch_loss, 2)}'
+
+        # Validation
+        if validate:
+            startPoint = 0
+            endPoint = batch_size
+            val_m = validation_X.shape[0]
+            while endPoint < val_m:
+                batch_X = validation_X[startPoint:endPoint, :]
+                batch_y = validation_y[startPoint:endPoint]
+                startPoint = endPoint
+                endPoint = startPoint + batch_size
+
+                # Forward Propagation
+                prediction, caches = forward_propagate(layers, batch_X)
+
+                # Calculating loss
+                loss = layers[-1].loss(prediction, batch_y, num_labels)
+                val_batch_losses.append(loss)
+            
+            val_loss = np.average(val_batch_losses)
+            history["val_loss"].append(val_loss)
+            print_str += f', Validation Loss: {round(val_loss, 2)}'
 
         if epoch_operation is not None:
             epoch_operation()
+
+        if display_method is None:
+            print(print_str)
+        else:
+            display_method(print_str)
 
     return history
 
