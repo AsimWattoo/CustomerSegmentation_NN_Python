@@ -1,14 +1,23 @@
 import numpy as np
 from tqdm import tqdm
+import h5py
 
 class DenseLayer():
-    def __init__(self, num_neurons, inputs, activation, activation_prime, is_input = False, is_output = False):
+    def __init__(self, num_neurons, inputs, activation, is_input = False, is_output = False):
         self.num_neurons = num_neurons
         self.inputs = inputs
         self.weights = np.random.randn(num_neurons, inputs)
         self.bias = np.zeros((num_neurons, 1))
-        self.activation = activation
-        self.activation_prime = activation_prime
+        self.activation_name = activation
+        if activation == 'sigmoid':
+            self.activation = sigmoid
+            self.activation_prime = sigmoid_prime
+        elif activation == 'softmax':
+            self.activation = softmax
+            self.activation_prime = softmax_prime
+        else:
+            self.activation = dummy_activation
+            self.activation_prime = dummy_activation
         self.is_output = is_output
         self.is_input = is_input
 
@@ -82,7 +91,6 @@ def backward_propagate(layers: list[DenseLayer], y: np.ndarray, alpha: float, la
         # Updating Weights
         layers[i + 1].weights -= alpha * dW
         layers[i + 1].bias -= alpha * db
-
 
 #Checks whether the gradient value is correctly calculated or not
 def check_gradient(layers: list[DenseLayer], epsilon: float, X: np.ndarray, y: np.ndarray, num_labels: int, alpha: float, lamda: float):
@@ -224,3 +232,34 @@ def softmax_prime(z):
         x = np.reshape(z[:, i], (-1, 1))
         der[:, i:i+1] = np.dot((I - softmax(x).T), softmax(x))
     return der
+
+# Saves the model to an h5 file
+def save_model(layers: list[DenseLayer], filename: str):
+    with h5py.File(filename, 'w') as file:
+        file.create_dataset("layers", data= layers.__len__())
+        for i in range(layers.__len__()):
+            layer = layers[i]
+            file.create_dataset(f"layer{i + 1}_weights", data= layer.weights)
+            file.create_dataset(f"layer{i + 1}_bias", data= layer.bias)
+            file.create_dataset(f"layer{i + 1}_activation", data=[layer.activation_name])
+            file.create_dataset(f"layer{i + 1}_connection", data=[layer.is_input, layer.is_output])
+
+
+
+# Loads the data from the model
+def load_model(filename):
+    layers = []
+    with h5py.File(filename, 'r') as file:
+        n = file['layers'][()]
+        # Initializing all the layers
+        for i in range(n):
+            weights = file[f'layer{i + 1}_weights'][()]
+            bias = file[f'layer{i + 1}_bias'][()]
+            activation = file[f'layer{i + 1}_activation'][()].astype('U')[0]
+            connections = file[f'layer{i + 1}_connection'][()]
+            layer = DenseLayer(weights.shape[0], weights.shape[1], activation, connections[0], connections[1])
+            layer.weights = weights
+            layer.bias = bias
+            layers.append(layer)
+    return layers
+    
