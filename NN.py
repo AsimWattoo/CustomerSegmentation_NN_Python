@@ -31,7 +31,7 @@ class DenseLayer():
             return A, Z
 
     # Calculates the loss
-    def loss(self, prediction: np.ndarray, y: np.ndarray, num_labels: int):
+    def loss(self, prediction: np.ndarray, y: np.ndarray, num_labels: int, lamda: float):
         m = prediction.shape[0]
         J = 0
         y = np.reshape(y, (-1, 1))
@@ -39,7 +39,7 @@ class DenseLayer():
             temp_y = y == i
             temp_prediction = np.reshape(prediction[:, i], (-1, 1))
             J += - (1 / num_labels) * np.sum(temp_y * np.log(temp_prediction) + (1-temp_y) * np.log(1 - temp_prediction))
-        return (1 / m) * J # + (lamda / (2 * m)) * np.sum(np.square(temp_theta))
+        return (1 / m) * J  + (lamda / (2 * m)) * np.sum(np.square(self.weights))
 
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
@@ -71,20 +71,14 @@ def backward_propagate(layers: list[DenseLayer], y: np.ndarray, alpha: float, la
         dZ_next[:, i:i+1] = (temp_prediction - temp_y)
     
     for i in range(layers.__len__() - 2, -1, -1):
-        # print(f"Layer: {i + 1}")
-        # print(f"dZ{i + 1} = {dZ_next}")
-        # print(f"W{i+1} = {layers[i + 1].weights}")
         A, Z = caches[i]
         layer = layers[i]
-        dW = (1 / m) * np.dot(A.T, dZ_next).T
+        dW = (1 / m) * np.dot(A.T, dZ_next).T + lamda / m * layers[i + 1].weights
         db = (1 / m) * np.reshape(np.sum(dZ_next, 0).T, (-1, 1))
 
         # print(f"dW{i + 1} = {dW}\n db{i+1} = {db}")
         if not layer.is_input:
             dA = np.dot(dZ_next, layers[i + 1].weights)
-            # print(f"dA{i} = {dA}")
-            # print(f"Z{i} = {Z}")
-            # print(f'Z`{i} = {layers[i + 1].activation_prime(Z)}')
             dZ = np.multiply(dA, layers[i + 1].activation_prime(Z))
             dZ_next = dZ
         
@@ -176,7 +170,7 @@ def train(layers: list[DenseLayer],
             prediction, caches = forward_propagate(layers, batch_X)
 
             # Calculating loss
-            loss = layers[-1].loss(prediction, batch_y, num_labels)
+            loss = layers[-1].loss(prediction, batch_y, num_labels, lamda)
             batch_losses.append(loss)
 
             # Doing back propagation
@@ -202,7 +196,7 @@ def train(layers: list[DenseLayer],
                 prediction, caches = forward_propagate(layers, batch_X)
 
                 # Calculating loss
-                loss = layers[-1].loss(prediction, batch_y, num_labels)
+                loss = layers[-1].loss(prediction, batch_y, num_labels, lamda)
                 val_batch_losses.append(loss)
             
             val_loss = np.average(val_batch_losses)
@@ -243,8 +237,6 @@ def save_model(layers: list[DenseLayer], filename: str):
             file.create_dataset(f"layer{i + 1}_bias", data= layer.bias)
             file.create_dataset(f"layer{i + 1}_activation", data=[layer.activation_name])
             file.create_dataset(f"layer{i + 1}_connection", data=[layer.is_input, layer.is_output])
-
-
 
 # Loads the data from the model
 def load_model(filename):
